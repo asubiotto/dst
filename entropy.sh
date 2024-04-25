@@ -78,7 +78,7 @@ elif [ ! -x "./dst" ] && [ "$use_custom_runtime" = false ]; then
 fi
 
 # Run the benchmark multiple times and append results to the temporary file
-echo $POLARSIGNALS_RANDOM_SEED
+echo "POLARSIGNALS_RANDOM_SEED set to $POLARSIGNALS_RANDOM_SEED. Remember to set this env var if you want deterministic execution"
 echo "Running benchmark..."
 for (( i=0; i<$counter; i++ )); do
     # Modified runtime prints to stderr, so redirect to ensure everything is

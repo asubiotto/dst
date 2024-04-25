@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"strings"
 	"sync"
@@ -60,7 +61,8 @@ func init() {
 }
 
 func main() {
-	// runtime.GOMAXPROCS(1)
+	// runtime.GOMAXPROCS(1) not necessary because our deterministic runtime
+	// runs on WASM, which is single-threaded.
 	if err := dstCmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -72,24 +74,29 @@ func main() {
 // order is written to an external file that can be analyzed so that distinct
 // run orders can be compared.
 func dstInternal(nWorkers int, w io.Writer) error {
-	orderChan := make(chan int, nWorkers)
-	/*fmt.Println("sleeping in main goroutine")
-	pprof.Lookup("goroutine").WriteTo(os.Stdout, 2)
-	time.Sleep(10 * time.Second)*/
+	orderChan := make(chan workerInfo, nWorkers)
 	var wg sync.WaitGroup
 	wg.Add(nWorkers)
+	// These selectChans are all closed and verify deterministic select case
+	// selection.
+	selectChans := make([]chan struct{}, 0)
+	for i := 0; i < 4; i++ {
+		selectChan := make(chan struct{})
+		close(selectChan)
+		selectChans = append(selectChans, selectChan)
+	}
 	for i := 0; i < nWorkers; i++ {
 		id := i
 		go func() {
 			defer wg.Done()
-			worker(id, orderChan)
+			worker(id, orderChan, selectChans)
 		}()
 	}
 	wg.Wait()
 	close(orderChan)
 	order := make([]string, 0, nWorkers)
-	for i := range orderChan {
-		order = append(order, fmt.Sprintf("%d", i))
+	for info := range orderChan {
+		order = append(order, info.String())
 	}
 	if _, err := w.Write([]byte(fmt.Sprintf("%s\n", strings.Join(order, "-")))); err != nil {
 		return err
@@ -97,7 +104,30 @@ func dstInternal(nWorkers int, w io.Writer) error {
 	return nil
 }
 
-func worker(id int, orderChan chan<- int) {
-	time.Sleep(1 * time.Millisecond)
-	orderChan <- id
+type workerInfo struct {
+	// id of the goroutine.
+	id int
+	// selectCase this worker selected.
+	selectCase int
+}
+
+func (i workerInfo) String() string {
+	return fmt.Sprintf("{%d,%d}", i.id, i.selectCase)
+}
+
+func worker(id int, orderChan chan<- workerInfo, selectChans []chan struct{}) {
+	info := workerInfo{id: id}
+	select {
+	case <-selectChans[0]:
+		info.selectCase = 0
+	case <-selectChans[1]:
+		info.selectCase = 1
+	case <-selectChans[2]:
+		info.selectCase = 2
+	case <-selectChans[3]:
+		info.selectCase = 3
+	}
+	mSleep := time.Duration(rand.Intn(10)) * time.Millisecond
+	time.Sleep(mSleep)
+	orderChan <- info
 }
