@@ -31,7 +31,7 @@ var dstCmd = &cobra.Command{
 
 var entropyCmd = &cobra.Command{
 	Use:  "entropy",
-	Long: "Calculates the entropy of the file lines. If all lines are the same, result is 0, if all are different result is 100",
+	Long: "Calculates the entropy of the file lines. If all lines are the same, result is 100, if all are different result is 0",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		fileName, err := cmd.Flags().GetString(fileFlagName)
 		if err != nil {
@@ -49,7 +49,11 @@ var entropyCmd = &cobra.Command{
 			distinct[s.Text()] = struct{}{}
 			lines++
 		}
-		fmt.Printf("%d distinct executions out of %d executions: score: %0.2f%% \n", len(distinct), lines, 101-(float64(len(distinct)-1)/float64(lines-1)*99+1))
+		result := 100 - (float64(len(distinct))/float64(lines))*100
+		if len(distinct) == 1 {
+			result = 100
+		}
+		fmt.Printf("%d distinct executions out of %d executions: score: %0.2f%% \n", len(distinct), lines, result)
 		return nil
 	},
 }
@@ -69,10 +73,10 @@ func main() {
 	}
 }
 
-// main spawns a couple of goroutines that each do some work and communicate
-// over a channel to the main goroutine that records these interactions. The
-// order is written to an external file that can be analyzed so that distinct
-// run orders can be compared.
+// dstInternal spawns a couple of goroutines that each do some work and
+// communicate over a channel to the main goroutine that records these
+// interactions. The order is written to an external file that can be analyzed
+// so that distinct run orders can be compared.
 func dstInternal(nWorkers int, w io.Writer) error {
 	orderChan := make(chan workerInfo, nWorkers)
 	var wg sync.WaitGroup
